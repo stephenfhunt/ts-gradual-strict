@@ -1,0 +1,11 @@
+{
+  // A project as it might look today: not strict, on options TypeScript 6 deprecates.
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "strict": false,
+    "noEmit": true
+  },
+  "include": ["src"]
+}
