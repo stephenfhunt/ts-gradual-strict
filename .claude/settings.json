@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(npx biome *)",
+      "Bash(node dist/cli.js *)",
+      "Bash(git *)"
+    ]
+  }
+}

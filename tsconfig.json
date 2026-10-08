@@ -1,0 +1,31 @@
+{
+  // One config for source, tests and tools. Unlike tsdl there is no browser guard to
+  // enforce: this is a Node CLI, and `src/` legitimately reads the filesystem through the
+  // compiler host. The tool holds itself to the strictest settings it can, since a checker
+  // for strict mode that is not strict itself would be a strange advertisement.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024"],
+    "types": ["node"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src", "test", "vitest.config.ts"],
+  // Fixture projects are inputs to the tool, deliberately non-strict, never part of its build.
+  "exclude": ["test/fixtures"]
+}

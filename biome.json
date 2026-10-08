@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "src/**",
+      "test/**",
+      "!test/fixtures",
+      "tools/**/*.ts",
+      "package.json",
+      "tsconfig*.json",
+      "biome.json",
+      "vitest.config.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 90
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "json": {
+    "parser": {
+      "allowComments": true
+    }
+  }
+}

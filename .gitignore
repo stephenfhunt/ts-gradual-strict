@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# Never commit a transcript. Claude Code auto-saves them under
+# ~/.claude/projects/<repo-slug>/*.jsonl; they are not project artifacts.
+*.jsonl
+
+# Per-checkout Claude Code state; settings.json is shared and tracked.
+.claude/*
+!.claude/settings.json

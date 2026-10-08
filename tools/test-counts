@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+// Reads the JSON report vitest writes on every run and prints the test half of the
+// baseline line — `25/25`, or `23/25 (2 failing)`. Taken from the report rather than from
+// scrollback: a count assembled from scrollback is a count assembled wrong.
+
+import { readFileSync } from 'node:fs';
+
+const REPORT = 'node_modules/.ts-gradual-strict/test-report.json';
+
+try {
+  const report = JSON.parse(readFileSync(REPORT, 'utf8'));
+  const total = report.numTotalTests ?? 0;
+  const passed = report.numPassedTests ?? 0;
+  const failed = report.numFailedTests ?? 0;
+  if (total === 0) process.stdout.write('none\n');
+  else if (failed === 0) process.stdout.write(`${passed}/${total}\n`);
+  else process.stdout.write(`${passed}/${total} (${failed} failing)\n`);
+} catch {
+  // No report means the runner did not get far enough to write one.
+  process.stdout.write('unknown\n');
+}
