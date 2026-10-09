@@ -22,10 +22,13 @@ export const STRICT_OVERRIDES: ts.CompilerOptions = { strictNullChecks: true };
 const RUN_OVERRIDES: ts.CompilerOptions = { noEmit: true, ignoreDeprecations: '6.0' };
 
 export interface LoadedProject {
+  readonly configPath: string;
   readonly rootNames: readonly string[];
   readonly options: ts.CompilerOptions;
   /** Config-file errors. Non-empty means the project could not be read. */
   readonly errors: readonly ts.Diagnostic[];
+  /** The tsconfig paths of the projects this one references. */
+  readonly references: readonly string[];
 }
 
 /** Read a tsconfig the way `tsc -p` does: `extends`, `include`, `files` and all. */
@@ -41,8 +44,38 @@ export function loadProject(tsconfigPath: string): LoadedProject {
       },
     },
   );
-  if (parsed === undefined) return { rootNames: [], options: {}, errors };
-  return { rootNames: parsed.fileNames, options: parsed.options, errors: parsed.errors };
+  const configPath = ts.sys.resolvePath(tsconfigPath);
+  if (parsed === undefined) {
+    return { configPath, rootNames: [], options: {}, errors, references: [] };
+  }
+  return {
+    configPath,
+    rootNames: parsed.fileNames,
+    options: parsed.options,
+    errors: parsed.errors,
+    references: (parsed.projectReferences ?? []).map((r) =>
+      ts.resolveProjectReferencePath(r),
+    ),
+  };
+}
+
+/**
+ * A tsconfig and every project it references, transitively, each read once, in
+ * depth-first order. A solution-style config (`"files": []` plus `references`) is how a
+ * monorepo names its projects, and reading only the root would check nothing.
+ */
+export function loadProjects(tsconfigPath: string): readonly LoadedProject[] {
+  const seen = new Set<string>();
+  const out: LoadedProject[] = [];
+  const visit = (path: string): void => {
+    const project = loadProject(path);
+    if (seen.has(project.configPath)) return;
+    seen.add(project.configPath);
+    out.push(project);
+    for (const ref of project.references) visit(ref);
+  };
+  visit(tsconfigPath);
+  return out;
 }
 
 /** The project's options with the strict overrides applied. */

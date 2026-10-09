@@ -89,4 +89,28 @@ describe('the command', () => {
     );
     expect(r.status).toBe(2);
   });
+  test('a solution-style tsconfig checks every referenced project, each under its own options', () => {
+    const r = run('-p', 'test/fixtures/solution/tsconfig.json', '--no-pretty');
+    expect(r.stdout).toBe(
+      [
+        "test/fixtures/solution/lib/src/settings.ts(7,3): error TS2375: Type '{ theme: undefined; }' is not assignable to type 'Settings' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.",
+        "  Types of property 'theme' are incompatible.",
+        "    Type 'undefined' is not assignable to type 'string'.",
+        "test/fixtures/solution/app/src/main.ts(5,10): error TS2532: Object is possibly 'undefined'.",
+        '',
+        'Found 2 errors in @strict code.',
+        '',
+      ].join('\n'),
+    );
+    expect(r.status).toBe(1);
+  });
+
+  test('a tsconfig that names no files is a config error, not a pass', () => {
+    const empty = run('-p', 'test/fixtures/empty/tsconfig.json', '--no-pretty');
+    expect(empty.stdout).toContain('TS18002');
+    expect(empty.status).toBe(2);
+    const cycle = run('-p', 'test/fixtures/cycle/tsconfig.json', '--no-pretty');
+    expect(cycle.stdout).toContain('No files to check');
+    expect(cycle.status).toBe(2);
+  });
 });

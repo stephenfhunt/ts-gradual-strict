@@ -21,6 +21,9 @@ export function greet(id: number): string {
 npx ts-gradual-strict -p tsconfig.json
 ```
 
+Point `-p` at a monorepo's solution-style root tsconfig and every referenced project is
+checked, each under its own options.
+
 Silent with exit 0 when every marked region is clean; `tsc`-style errors and exit 1 when
 one is not — so it drops into CI next to the normal build and keeps marked code from
 regressing.
@@ -45,6 +48,9 @@ trusted.
 
 When everything is marked and the tool is silent, turn `strictNullChecks` on in tsconfig
 and delete the marks: the output with everything marked is exactly what `tsc` reports.
+
+To silence one strict error inside a mark, use `!`, a cast, or `// @ts-ignore`, **not**
+`// @ts-expect-error`: the project's own non-strict build sees nothing to expect and fails.
 
 `spec.md` is the full contract, with a worked example for every rule — including what the
 tool deliberately does not catch.

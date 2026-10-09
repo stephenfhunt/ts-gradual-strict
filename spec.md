@@ -75,15 +75,19 @@ ts-gradual-strict [-p <tsconfig.json>] [--pretty | --no-pretty] [--report]
 ```
 
 `-p` defaults to `tsconfig.json` in the working directory and is read the way `tsc -p`
-reads it, `extends` included. `--pretty` (the default on a terminal) prints with colour
-and source context, as `tsc` does.
+reads it, `extends` included. Its `references` are followed, transitively, and every
+referenced project is checked too. A solution-style root (`"files": []` plus
+`references`), as a monorepo often has, checks every project it names. Each project is
+checked under its own options and answers for its own files: a file one project imports
+from another is checked once, by the project that includes it. `--pretty` (the default on
+a terminal) prints with colour and source context, as `tsc` does.
 
 | outcome | output | exit |
 |---|---|---|
 | every marked region is clean | nothing | 0 |
 | a marked region has errors | the diagnostics, then `Found N errors in @strict code.` | 1 |
 | a marker marks nothing (§Marking) | each one, `Found N @strict markers that mark nothing.`, then any diagnostics | 2 |
-| the tsconfig cannot be read, or bad arguments | the config diagnostics, or usage | 2 |
+| the tsconfig cannot be read, names no files (directly or through its references), or bad arguments | the config diagnostics, or usage | 2 |
 
 `--report` appends the boundary report (§The report) after everything else, and never
 changes the exit code.
@@ -101,7 +105,9 @@ An **edge** runs from a mark to an unmarked declaration that the mark references
 that declaration has code that could break its own type: a function, method, accessor,
 class property or variable, in the project's own source. Library and `node_modules`
 declarations, `declare`d ones, classes, interfaces, type aliases and parameters are not
-edges. There is one edge per mark and target, located at the mark's first reference.
+edges, with one exception: `new C(...)` is an edge to `C`'s explicit constructor, the
+code that sets up what marked code then reads. There is one edge per mark and target,
+located at the mark's first reference.
 
 Each edge shows:
 
@@ -110,8 +116,10 @@ Each edge shows:
   code sees.
 - **Its strict errors**: the strict program's diagnostics in the target's own text,
   which is exactly what marking the target would add to the output. `clean` means
-  marking it is free. Writes to a variable from elsewhere are not in its own text and
-  are not counted.
+  marking it is free. Writes to a variable or class property from elsewhere are not in
+  its own text and are not counted: a field declared `owner: string` reads `clean` even
+  when a constructor stores `undefined` in it. The constructor's own edge carries that
+  error.
 - **Where the target is declared.**
 
 Edges are listed cheapest first: by strict errors, then by position.
@@ -126,6 +134,15 @@ a closed mark strict mode holds outright: nothing it reaches is trusted. The las
 counts marks and closed marks. A marked class is one mark, as is a file marked with
 `@strictFile`.
 
+## Silencing an error
+
+Inside a mark, silence a strict-only error with something both builds accept: a non-null
+assertion (`user!.name`), a cast, a narrowing check, or `// @ts-ignore`.
+
+**Not `// @ts-expect-error`.** Over an error that only strict rules report, the project's
+own non-strict build sees no error there, so the directive is unused, and that build fails
+with `TS2578: Unused '@ts-expect-error' directive`.
+
 ## Not covered
 
 - Strict-family flags other than `strictNullChecks` (`noImplicitAny`,
@@ -134,7 +151,14 @@ counts marks and closed marks. A marked class is one mark, as is a file marked w
   to a marked parameter (`decisions.md` 2026-10-08).
 - An opt-out inside a mark.
 - Editor integration: the diagnostics appear only from the command.
-- TypeScript 7, whose compiler API is not yet stable.
+- TypeScript 7, whose compiler API is not yet stable. Nor is the supported range checked
+  at run time: a project on a TypeScript outside `>=5.0 <7` fails with whatever error
+  that version produces, not a message saying it is unsupported.
+- JavaScript files (`allowJs`, `checkJs`): marks in `.js` files are untried.
+- A suppression comment of the tool's own (`decisions.md` open question).
+- Errors the project's own build already reports inside a mark are reported again here.
+- Declarations a project reaches through a referenced project's built `.d.ts` are
+  declarations, not code: they are trusted like a library's and are never report edges.
 
 ## Examples
 
@@ -518,3 +542,30 @@ example.ts(2,4): error: `@strictFile` marks nothing here: it must be in a commen
 ```
 
 Test: `examples › @strictFile below an import marks nothing, and says so`
+
+### Constructing a class trusts its constructor
+
+Flags: --report
+
+```ts
+class Account {
+  owner: string;
+  constructor(owner?: string) {
+    this.owner = owner;
+  }
+}
+
+/** @strict */
+function ownerLength(name: string): number {
+  return new Account(name).owner.length;
+}
+```
+
+```text
+@strict boundary: 2 edges from 1 mark
+  example.ts(10,28): ownerLength → Account.owner        annotated  clean           example.ts(2,3)
+  example.ts(10,14): ownerLength → Account.constructor  annotated  1 strict error  example.ts(3,3)
+marks: 1, closed: 0
+```
+
+Test: `examples › constructing a class trusts its constructor`

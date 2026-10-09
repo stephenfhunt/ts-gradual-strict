@@ -1,0 +1,5 @@
+{
+  // Solution-style, as a monorepo root often is: no files of its own, only references.
+  "files": [],
+  "references": [{ "path": "./lib" }, { "path": "./app" }]
+}

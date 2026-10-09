@@ -46,6 +46,16 @@ export interface Report {
   readonly closed: number;
   /** Cheapest to mark first: by the target's strict errors, then by site. */
   readonly edges: readonly Edge[];
+  /** Each owned mark, by `file:start`, and whether it is closed — what merging needs. */
+  readonly markKeys: ReadonlyMap<string, boolean>;
+}
+
+/** Which source files a program answers for. */
+export type Owns = (sf: ts.SourceFile) => boolean;
+
+/** The default: every file of the project's own, none from libraries or `.d.ts`. */
+export function projectFiles(program: ts.Program): Owns {
+  return (sf) => isProjectFile(program, sf);
 }
 
 function isProjectFile(program: ts.Program, sf: ts.SourceFile): boolean {
@@ -64,7 +74,9 @@ function isAmbient(node: ts.Node): boolean {
 }
 
 function hasDeclaredType(node: ts.Node): boolean {
-  if (ts.isSetAccessorDeclaration(node)) return true;
+  // A constructor's type is its class, which no body edit can change; its parameters are
+  // the signature it is trusted for.
+  if (ts.isSetAccessorDeclaration(node) || ts.isConstructorDeclaration(node)) return true;
   if (ts.isFunctionLike(node)) return node.type !== undefined;
   if (ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) {
     if (node.type !== undefined) return true;
@@ -77,7 +89,7 @@ function hasDeclaredType(node: ts.Node): boolean {
 /**
  * The node a mark would go on, for a declaration that can be an edge target: one with
  * code that could break its own type. Classes, interfaces, type aliases, parameters and
- * ambient declarations are not targets.
+ * ambient declarations are not targets; `new C()` targets `C`'s constructor instead.
  */
 function markableUnit(decl: ts.Declaration): ts.Node | undefined {
   if (isAmbient(decl)) return undefined;
@@ -86,7 +98,8 @@ function markableUnit(decl: ts.Declaration): ts.Node | undefined {
     ts.isMethodDeclaration(decl) ||
     ts.isGetAccessorDeclaration(decl) ||
     ts.isSetAccessorDeclaration(decl) ||
-    ts.isPropertyDeclaration(decl)
+    ts.isPropertyDeclaration(decl) ||
+    ts.isConstructorDeclaration(decl)
   ) {
     return decl;
   }
@@ -152,7 +165,31 @@ function within(span: Span, pos: number): boolean {
   return span.start <= pos && pos < span.end;
 }
 
-export function buildReport(program: ts.Program): Report {
+/**
+ * The declaration a reference trusts: what it resolves to, except that `new C(...)`
+ * trusts `C`'s explicit constructor rather than the class, which has no code of its own.
+ */
+function trustedDeclaration(node: ts.Identifier, decl: ts.Declaration): ts.Declaration {
+  const parent = node.parent;
+  if (ts.isClassLike(decl) && ts.isNewExpression(parent) && parent.expression === node) {
+    const ctor = decl.members.find(
+      (m): m is ts.ConstructorDeclaration =>
+        ts.isConstructorDeclaration(m) && m.body !== undefined,
+    );
+    if (ctor !== undefined) return ctor;
+  }
+  return decl;
+}
+
+/**
+ * The report for the marks in files `owns` accepts. Every mark in the program takes part
+ * in closure, so a mark that reaches into another project's files is open or closed by
+ * what is there; only owned marks are counted and only their edges listed.
+ */
+export function buildReport(
+  program: ts.Program,
+  owns: Owns = projectFiles(program),
+): Report {
   const checker = program.getTypeChecker();
 
   const marksOf = new Map<ts.SourceFile, readonly Mark[]>();
@@ -171,6 +208,7 @@ export function buildReport(program: ts.Program): Report {
     for (const mark of marksIn(sf)) all.push({ sf, mark });
   }
   const indexOf = new Map(all.map((m, i) => [m.mark, i]));
+  const owned = all.map(({ sf }) => owns(sf));
 
   const targets = new Map<ts.Node, Target>();
   const targetFor = (decl: ts.Declaration, unit: ts.Node): Target => {
@@ -212,7 +250,8 @@ export function buildReport(program: ts.Program): Report {
         if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) {
           symbol = checker.getAliasedSymbol(symbol);
         }
-        const decl = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+        const resolved = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+        const decl = resolved && trustedDeclaration(node, resolved);
         const dsf = decl?.getSourceFile();
         if (decl !== undefined && dsf !== undefined && isProjectFile(program, dsf)) {
           const unit = markableUnit(decl);
@@ -224,7 +263,7 @@ export function buildReport(program: ts.Program): Report {
           } else if (unit !== undefined) {
             hasEdge[i] = true;
             const key = `${i}:${dsf.fileName}:${unit.pos}`;
-            if (!edges.has(key)) {
+            if (owned[i] === true && !edges.has(key)) {
               edges.set(key, {
                 from,
                 site: { file: sf, pos: node.getStart(sf) },
@@ -251,13 +290,42 @@ export function buildReport(program: ts.Program): Report {
     });
   }
 
-  const sorted = [...edges.values()].sort(
+  const markKeys = new Map<string, boolean>();
+  all.forEach(({ sf, mark }, i) => {
+    if (owned[i] === true)
+      markKeys.set(`${sf.fileName}:${mark.span.start}`, open[i] !== true);
+  });
+  return finish([...edges.values()], markKeys);
+}
+
+function finish(edges: readonly Edge[], markKeys: ReadonlyMap<string, boolean>): Report {
+  const sorted = [...edges].sort(
     (a, b) =>
       a.target.strictErrors - b.target.strictErrors ||
       a.site.file.fileName.localeCompare(b.site.file.fileName) ||
       a.site.pos - b.site.pos,
   );
-  return { marks: all.length, closed: open.filter((o) => !o).length, edges: sorted };
+  const closed = [...markKeys.values()].filter((c) => c).length;
+  return { marks: markKeys.size, closed, edges: sorted, markKeys };
+}
+
+/**
+ * One report from several programs' — one per project. A file owned by no program's root
+ * set can be checked by more than one, so edges and marks are deduplicated by position, and
+ * a mark is closed only if every program that saw it found it closed.
+ */
+export function mergeReports(reports: readonly Report[]): Report {
+  const edges = new Map<string, Edge>();
+  const markKeys = new Map<string, boolean>();
+  for (const r of reports) {
+    for (const e of r.edges) {
+      const key = `${e.site.file.fileName}:${e.site.pos}:${e.target.at.file.fileName}:${e.target.at.pos}`;
+      if (!edges.has(key)) edges.set(key, e);
+    }
+    for (const [k, closed] of r.markKeys)
+      markKeys.set(k, (markKeys.get(k) ?? true) && closed);
+  }
+  return finish([...edges.values()], markKeys);
 }
 
 /** `file(line,col)`, relative to `cwd`, as `tsc` prints a location. */

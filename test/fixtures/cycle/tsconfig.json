@@ -1,0 +1,6 @@
+{
+  // Two configs that reference only each other: no file anywhere, and no config error
+  // from TypeScript, which reports every other no-files shape itself.
+  "files": [],
+  "references": [{ "path": "./other" }]
+}

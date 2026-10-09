@@ -1,0 +1,13 @@
+{
+  // exactOptionalPropertyTypes makes lib's marked code wrong under lib's options only, so
+  // the test can tell which project's options a file was checked under.
+  "compilerOptions": {
+    "composite": true,
+    "strict": false,
+    "exactOptionalPropertyTypes": true,
+    "target": "es2022",
+    "module": "commonjs",
+    "outDir": "out"
+  },
+  "include": ["src"]
+}

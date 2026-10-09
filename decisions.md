@@ -15,6 +15,38 @@ Newest first. Everything outside this file states present truth and merely *poin
 
 ## Decisions
 
+- **2026-10-08** — **`new C()` is a report edge to `C`'s explicit constructor**
+  (`trustedDeclaration`, `src/report.ts`).
+  - **Why:** classes were excluded as edge targets, since a class has no code of its own,
+    so a mark constructing a legacy class never showed that it trusted the constructor,
+    which is the code that fills the fields marked code then reads. The constructor edge
+    carries those errors. Under the old rule the field reads `clean` (spec example).
+  - **Rejected:** making the class itself a target. Its "own text" would include every
+    method, so its strict-error count would not be the cost of marking anything one mark
+    can cover.
+  - **Guard:** spec example *constructing a class trusts its constructor*. Dropping the
+    mapping reddens it (mutation-verified).
+
+- **2026-10-08** — **Project references are followed; each project is checked under its
+  own options and answers for its own files** (`loadProjects`, `src/ts.ts`;
+  `checkProject`, `src/check.ts`).
+  - **Why:** a solution-style root (`"files": []` plus `references`) checked nothing and
+    exited 0, the same silent pass as a stray marker, at the root of exactly the monorepo
+    this tool is headed for. Now there is one strict program per project. A file belongs
+    to the project whose `include` names it, so a cross-project import is checked once,
+    under the right options. Results merge with duplicates removed.
+  - **Not passed to the program:** `projectReferences`. Doing so would resolve imports to
+    the referenced project's built `.d.ts`, which needs a build this tool does not run.
+    Imports resolve as the project's own module resolution has them.
+  - **No files anywhere is exit 2.** TypeScript reports the ordinary shapes itself
+    (TS18002, TS18003). The tool adds one for configs that reference only each other.
+  - **Rejected:** checking each file under every program that reaches it, which reports
+    errors under the wrong project's options.
+  - **Guard:** `test/cli.test.ts`'s solution fixture. `app` turns on an option that would
+    make `lib`'s marked code fail if it were checked under `app`'s options. Letting every
+    program answer for every file reddens it (mutation-verified). The empty and cycle
+    fixtures cover the no-files error.
+
 - **2026-10-08** — **No build step: the bin is `src/cli.ts`, run by Node's type
   stripping; `engines` is `>=22.18`** (`package.json`; `test/consume.test.ts`).
   - **Why:** the tool is meant to be consumed from a monorepo as a `file:` or workspace
@@ -150,6 +182,17 @@ Newest first. Everything outside this file states present truth and merely *poin
     diagnostics inside the generator's marked spans).
 
 ## Open questions
+
+- **Should the tool have its own suppression comment?** `@ts-expect-error` cannot silence
+  a strict-only error in a mark: the project's own build sees it as unused and fails
+  (TS2578, `test/escape.test.ts`). Today's options (`!`, casts, `@ts-ignore`) work in both
+  builds but lose `@ts-expect-error`'s safety, which errors once the silenced error is
+  gone. A `// @strict-expect-error` would keep that safety: it silences one strict error,
+  and it is an error (exit 2, like a stray) when there is none to silence. When the flag
+  is turned on project-wide, each one becomes `@ts-expect-error` by mechanical rename.
+  Against: a second directive vocabulary, and `@ts-ignore` already works. Recommend:
+  yes, if a real project shows people reaching for `@ts-expect-error` here. —
+  `src/check.ts`; `spec.md` §Silencing an error.
 
 - **How should the boundary between marked and unmarked code be reported?** Errors stay
   as they are: trusted signatures, no inbound checks. Changing that breaks P3/P4 or the

@@ -1,0 +1,14 @@
+{
+  // noUncheckedIndexedAccess would make lib's `firstLength` an error, but only if lib's file
+  // were checked under app's options; it must not be.
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "composite": true,
+    "strict": false,
+    "target": "es2022",
+    "module": "commonjs",
+    "outDir": "out"
+  },
+  "include": ["src"],
+  "references": [{ "path": "../lib" }]
+}

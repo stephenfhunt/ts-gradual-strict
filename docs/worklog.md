@@ -14,6 +14,46 @@ next one orients in seconds without re-reading transcripts.
 
 ---
 
+## 2026-10-08 — monorepo roots are checked, not passed; the known gaps are written down
+
+```
+baseline: properties=10/12 green tests=70/70
+```
+
+**Done.** The gaps listed in answer to "what is missing":
+- **Project references** (`loadProjects`, `checkProject`). A solution-style root had
+  checked nothing and exited 0, which an experiment confirmed before the fix. Now there is
+  one strict program per project, each answering for its own files under its own options,
+  with results merged and duplicates removed. A no-files set of configs is exit 2.
+  Fixtures: `solution/`, `empty/`, `cycle/`.
+- **Constructor edges**: `new C()` is a report edge to `C`'s explicit constructor. You
+  asked what "classes are excluded" meant, and it turned out to hide the code that fills
+  the fields.
+- **`@ts-expect-error` trap**: confirmed by experiment (TS2578 in the project build),
+  pinned in `test/escape.test.ts` against both builds, and documented in §Silencing an
+  error. A tool-specific `@strict-expect-error` is staged as an open question.
+- **Not covered** gained: runtime TS-version check, `allowJs`, duplicate errors, built
+  `.d.ts` across references. `testing.md` lists what is untested.
+- The suite passes on Node 22.18.0 as well as 26.
+
+**What the tests taught.**
+- **The first solution fixture couldn't tell options apart.** Letting every program check
+  every file passed it, because `lib`'s file had no extra errors under `app`'s options and
+  deduplication hid the rest. `app` now turns on `noUncheckedIndexedAccess`, which would
+  make `lib`'s marked code an error if `lib`'s file were checked under `app`'s options,
+  and the mutation goes red.
+- **The "no files" error is almost unreachable.** TypeScript already rejects every
+  ordinary shape. Only a reference cycle reached it, so a fixture pins that case.
+
+**Decided** (`decisions.md` 2026-10-08): references followed, one program per project;
+`new` targets the constructor.
+
+**Removed.** Nothing. One worklog entry was moved to the archive.
+
+**Next up.** A real legacy project: first as a monorepo devDependency, then pointed at the
+solution root with `--report`. Watch for `@ts-expect-error` (it decides the open question)
+and for locals flooding the report. Then P9 and P8.
+
 ## 2026-10-08 — no build step; Node 22.18 is the measured floor
 
 ```
@@ -80,43 +120,4 @@ marker that marks nothing is an error, exit 2.
 - **Run on a real legacy project**, now with `--report`. Watch whether locals of
   partially marked functions flood the report.
 - P9 (`@strictFile`), P8 (independent nullability oracle).
-
-## 2026-10-08 — `--report` lands; `--boundary` is declined
-
-```
-baseline: properties=10/12 green tests=32/32
-```
-
-**Done.**
-- **`--report`** (`src/report.ts`): edges from marks to unmarked declarations that have
-  code, each with annotated/inferred, the target's own strict-error count, and where the
-  target is declared. Sorted cheapest first. Ends with a `marks: N, closed: M` line. It
-  resolves imports and never changes the exit code.
-- `src/regions.ts` now returns marks (node and span), so the report can name them.
-- **`spec.md` §The report**, with four examples: cost order, closure, which declarations
-  are edges, and nested marks. The examples harness reads `Flags: --report`, and
-  `EXAMPLES_OUT=<file>` dumps actual output so a new example can be read before it's pinned.
-- **P10–P12**, mutation-verified. P12's oracle is a call graph the generator reads off
-  its own shape. The generator's `box` is now `declare`d, so it is never an edge.
-
-**What the properties taught.**
-- **One mutation survived all three properties**: counting errors that a nested mark
-  inside the target already reports. The generator never nests a mark inside an unmarked
-  function, so it can't reach that case. It's pinned by a spec example instead, and
-  `testing.md` says so. If the generator grows to nest marks, that needs an acceptance
-  check (rule 4).
-- **A silent no-op edit:** biome had re-wrapped the prelude line, so my scripted replace
-  did nothing. P10 and P12 caught it at once, because `box` showed up as an edge whose
-  target lay outside every slot.
-
-**Decided** (`decisions.md` 2026-10-08): `--report` as a flag; `--boundary` declined on
-your call, because it sees only type-visible nulls and breaks P2.
-
-**Removed.** `notes/boundary.md`. Part 1 is now in `spec.md`, and part 2 was declined.
-
-**Next up.**
-- **Run `--report` on a real legacy project.** Is the edge list a usable to-do list or
-  noise? Variables and class properties may flood it, and the count of type-only
-  declarations would show how much the exclusions matter.
-- Unchanged: P9 (`@strictFile`), P8 (independent nullability oracle).
 
