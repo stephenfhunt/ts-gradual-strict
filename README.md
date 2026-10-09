@@ -32,9 +32,11 @@ the errors that fall inside marked code. Every type in the project is read with 
 meaning, so marked code must narrow a legacy `User | null` and cannot return `null`
 through its own `: string`. Unmarked code is never reported.
 
-- `/** @strict */` marks a function, method, class, accessor or variable statement, and
-  everything nested inside it.
+- `/** @strict */` marks a function, class, method, variable, or a single statement such
+  as one `if` block inside a legacy function, and everything nested inside it.
 - `// @strictFile` before a file's first token marks the whole file.
+- A marker that marks nothing, such as `// @strict` (not JSDoc) or `@strictFile` below an
+  import, is an error, so a mark can never pass silently.
 
 `--report` adds a list of the places where marked code trusts unmarked code. For each
 one it shows how many strict errors marking that declaration would add, cheapest first,

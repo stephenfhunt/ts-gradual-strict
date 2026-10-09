@@ -5,25 +5,43 @@ behind it are in `decisions.md`, and this document points there rather than argu
 
 ## Marking
 
-A **mark** is the JSDoc tag `@strict` on a declaration that can carry JSDoc: a function,
-method, constructor, accessor, class, or variable statement (which covers every
-declarator in it, and so the arrow functions they hold).
+A **mark** is the JSDoc tag `@strict` on any code TypeScript attaches JSDoc to:
+
+- **declarations**: functions (including `export default function`), classes, methods,
+  constructors, accessors, class properties, variable statements (covering every
+  declarator in them, and so the arrow functions they hold), object literal methods and
+  properties, namespaces and enums;
+- **statements**: `if`, a block, `return`, `throw`, loops, `switch`, `try`, and expression
+  statements such as `app.get('/', (req, res) => { ... });`;
+- **a function expression or arrow in argument position**:
+  `on('data', /** @strict */ (chunk) => { ... })`.
 
 ```ts
 /** @strict */
 export function title(user: User): string { ... }
 ```
 
-A mark covers its declaration **lexically**: the declaration's own text, from its JSDoc
-to its last token, and everything nested inside it. A marked class covers its members;
-a marked function covers the closures it defines. There is no way to unmark something
-nested inside a mark.
+A mark covers its code **lexically**: its own text, from its JSDoc to its last token, and
+everything nested inside it. A marked class covers its members, and a marked function
+covers the closures it defines. A marked statement lets a large legacy function adopt
+strict rules one block at a time. There is no way to unmark something nested inside a
+mark.
 
-A file is marked whole by `@strictFile` in a comment before its first token. It is a
-separate spelling because a leading `/** @strict */` is the JSDoc of the first
-declaration, and the two readings could not be told apart.
+A file is marked whole by `@strictFile` in a comment before its first token: above any
+`import` or `'use strict'`, below a licence header if there is one. It is a separate
+spelling because a leading `/** @strict */` is the JSDoc of the first declaration, and the
+two readings could not be told apart.
 
 The marks are comments, so they change nothing about how `tsc` compiles the project.
+
+**A marker that marks nothing is an error.** These look like marks and check nothing, so
+the command reports each one, names the fix, and exits 2 (§The command):
+
+- `@strict` in a plain comment, `// @strict` or `/* @strict */`, since only JSDoc
+  (`/** */`) is attached to code;
+- `@strict` in a JSDoc comment that TypeScript attached to no code, such as one at the end
+  of a file or one that isn't a tag at the start of a JSDoc line;
+- `@strictFile` anywhere after the file's first token.
 
 ## Semantics
 
@@ -64,6 +82,7 @@ and source context, as `tsc` does.
 |---|---|---|
 | every marked region is clean | nothing | 0 |
 | a marked region has errors | the diagnostics, then `Found N errors in @strict code.` | 1 |
+| a marker marks nothing (§Marking) | each one, `Found N @strict markers that mark nothing.`, then any diagnostics | 2 |
 | the tsconfig cannot be read, or bad arguments | the config diagnostics, or usage | 2 |
 
 `--report` appends the boundary report (§The report) after everything else, and never
@@ -97,6 +116,11 @@ Each edge shows:
 
 Edges are listed cheapest first: by strict errors, then by position.
 
+A mark is named by its declaration (`greet`, `Directory.lookup`, `themeLength`), and a
+`@strictFile` mark by its file. A statement or argument mark is named by its kind and the
+nearest named code around it: `if in greet`, `arrow in Server.start`, `statement in
+routes.ts`.
+
 A mark is **closed** when it has no edges and every mark it references is closed. Inside
 a closed mark strict mode holds outright: nothing it reaches is trusted. The last line
 counts marks and closed marks. A marked class is one mark, as is a file marked with
@@ -116,7 +140,7 @@ counts marks and closed marks. A marked class is one mark, as is a file marked w
 
 Each example is one file, `example.ts`, in a project compiled with `strict: false` and
 `target: es2022`. The output is what the command prints with `--no-pretty`, without its
-summary line. An example with a `Flags: --report` line runs with the report. A test runs every block below verbatim and compares exactly.
+summary lines. An example with a `Flags: --report` line runs with the report. A test runs every block below verbatim and compares exactly.
 
 ### A marked function cannot return null through a non-null signature
 
@@ -431,3 +455,66 @@ marks: 2, closed: 1
 ```
 
 Test: `examples › a target's strict errors leave out what its nested marks already report`
+
+### A statement can be marked inside a legacy function
+
+Flags: --report
+
+```ts
+function findUser(id: number): { name: string } | null {
+  return id > 0 ? { name: 'ada' } : null;
+}
+
+function render(id: number, verbose: boolean): string {
+  let out = 'user: ';
+  /** @strict */
+  if (verbose) {
+    out += findUser(id).name;
+  }
+  return out + findUser(id).name;
+}
+```
+
+```text
+example.ts(9,12): error TS2531: Object is possibly 'null'.
+
+@strict boundary: 2 edges from 1 mark
+  example.ts(9,5):  if in render → out       inferred   clean  example.ts(6,7)
+  example.ts(9,12): if in render → findUser  annotated  clean  example.ts(1,10)
+marks: 1, closed: 0
+```
+
+Test: `examples › a statement can be marked inside a legacy function`
+
+### A plain comment marks nothing, and says so
+
+```ts
+// @strict
+function label(id: number): string {
+  if (id < 0) return null;
+  return `#${id}`;
+}
+```
+
+```text
+example.ts(1,4): error: `@strict` in a plain comment marks nothing: a mark is a JSDoc comment, `/** @strict */`.
+```
+
+Test: `examples › a plain comment marks nothing, and says so`
+
+### @strictFile below an import marks nothing, and says so
+
+```ts
+import { helper } from './helper';
+// @strictFile
+
+function shout(s?: string): string {
+  return s.toUpperCase();
+}
+```
+
+```text
+example.ts(2,4): error: `@strictFile` marks nothing here: it must be in a comment before the file's first token, above any import or 'use strict'.
+```
+
+Test: `examples › @strictFile below an import marks nothing, and says so`

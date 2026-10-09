@@ -5,7 +5,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, test } from 'vitest';
-import { checkProgram } from '../src/check.ts';
+import { checkProgram, findStrays, formatStrays } from '../src/check.ts';
 import { buildReport, formatReport } from '../src/report.ts';
 import { format, ROOT, strictProgram } from './support.ts';
 
@@ -62,10 +62,13 @@ describe('examples', () => {
       expect(ex.testLine).toBe(`examples › ${name}`);
       const program = strictProgram({ 'example.ts': ex.source });
       const diagnostics = checkProgram(program);
-      let actual = format(diagnostics);
+      // As the command prints them: strays, then diagnostics, then the report, a blank
+      // line between any two that are present; summary lines left out.
+      const strays = formatStrays(findStrays(program), ROOT);
+      let actual = strays + (strays !== '' && diagnostics.length > 0 ? '\n' : '');
+      actual += format(diagnostics);
       if (ex.report) {
-        // As the command prints it: a blank line between the two when both are present.
-        actual += `${diagnostics.length > 0 ? '\n' : ''}${formatReport(buildReport(program), ROOT)}`;
+        actual += `${actual !== '' ? '\n' : ''}${formatReport(buildReport(program), ROOT)}`;
       }
       actuals[ex.title] = actual;
       expect(actual).toBe(ex.expected);

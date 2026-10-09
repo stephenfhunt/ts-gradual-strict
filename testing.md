@@ -32,7 +32,11 @@ a failure.
    without a `Test:` line fails the harness.
 2. **The command** — `test/cli.test.ts` runs `src/cli.ts` on fixture projects in
    `test/fixtures/`, one test per row of `spec.md` §The command's table.
-3. **Properties** — this file's catalog, `test/properties.test.ts`.
+3. **The marking table** — `test/marking.test.ts`, one row per construct that can carry a
+   mark (its null error is reported, under its report name) and one per marker that marks
+   nothing (it is a stray, with the fix in its message). This is the answer to "what can I
+   mark?" as a test, and it was found by probing TypeScript rather than read off the spec.
+4. **Properties** — this file's catalog, `test/properties.test.ts`.
 
 ## The four rules
 

@@ -97,7 +97,30 @@ function markableUnit(decl: ts.Declaration): ts.Node | undefined {
   return undefined;
 }
 
-function nameOf(node: ts.Node): string {
+/** What an unnamed mark is called, by kind: `if in greet`, `arrow in Server.start`. */
+const KIND_NAMES: Partial<Record<ts.SyntaxKind, string>> = {
+  [ts.SyntaxKind.IfStatement]: 'if',
+  [ts.SyntaxKind.Block]: 'block',
+  [ts.SyntaxKind.ReturnStatement]: 'return',
+  [ts.SyntaxKind.ThrowStatement]: 'throw',
+  [ts.SyntaxKind.ExpressionStatement]: 'statement',
+  [ts.SyntaxKind.ForStatement]: 'for',
+  [ts.SyntaxKind.ForOfStatement]: 'for',
+  [ts.SyntaxKind.ForInStatement]: 'for',
+  [ts.SyntaxKind.WhileStatement]: 'while',
+  [ts.SyntaxKind.DoStatement]: 'do',
+  [ts.SyntaxKind.SwitchStatement]: 'switch',
+  [ts.SyntaxKind.TryStatement]: 'try',
+  [ts.SyntaxKind.LabeledStatement]: 'label',
+  [ts.SyntaxKind.ArrowFunction]: 'arrow',
+  [ts.SyntaxKind.FunctionExpression]: 'function',
+  [ts.SyntaxKind.FunctionDeclaration]: 'function',
+  [ts.SyntaxKind.ClassDeclaration]: 'class',
+  [ts.SyntaxKind.ClassExpression]: 'class',
+};
+
+/** A node's own name, if it has one: `f`, `C.m`, `C.constructor`, `a, b`. */
+function ownName(node: ts.Node): string | undefined {
   if (ts.isSourceFile(node))
     return node.fileName.slice(node.fileName.lastIndexOf('/') + 1);
   if (ts.isVariableStatement(node)) {
@@ -105,12 +128,24 @@ function nameOf(node: ts.Node): string {
   }
   const name = ts.isConstructorDeclaration(node)
     ? 'constructor'
-    : (ts.getNameOfDeclaration(node as ts.Declaration)?.getText() ?? '<anonymous>');
+    : ts.getNameOfDeclaration(node as ts.Declaration)?.getText();
+  if (name === undefined) return undefined;
   const parent = node.parent;
   if (parent !== undefined && ts.isClassLike(parent) && parent.name !== undefined) {
     return `${parent.name.text}.${name}`;
   }
   return name;
+}
+
+/** A node's name; an unnamed one is named by its kind and the nearest named ancestor. */
+function nameOf(node: ts.Node): string {
+  const own = ownName(node);
+  if (own !== undefined) return own;
+  let where = '';
+  for (let p = node.parent; p !== undefined && where === ''; p = p.parent) {
+    where = ownName(p) ?? '';
+  }
+  return `${KIND_NAMES[node.kind] ?? 'expression'} in ${where}`;
 }
 
 function within(span: Span, pos: number): boolean {
@@ -225,7 +260,8 @@ export function buildReport(program: ts.Program): Report {
   return { marks: all.length, closed: open.filter((o) => !o).length, edges: sorted };
 }
 
-function where(loc: Location, cwd: string): string {
+/** `file(line,col)`, relative to `cwd`, as `tsc` prints a location. */
+export function where(loc: Location, cwd: string): string {
   const { line, character } = loc.file.getLineAndCharacterOfPosition(loc.pos);
   return `${relative(cwd, loc.file.fileName)}(${line + 1},${character + 1})`;
 }

@@ -77,4 +77,16 @@ describe('the command', () => {
     expect(r.stdout).toContain('@strict boundary: 1 edge from 1 mark');
     expect(r.status).toBe(0);
   });
+  test('a marker that marks nothing is named and exits 2', () => {
+    const r = run('-p', 'test/fixtures/stray/tsconfig.json', '--no-pretty');
+    expect(r.stdout).toBe(
+      [
+        'test/fixtures/stray/src/label.ts(1,4): error: `@strict` in a plain comment marks nothing: a mark is a JSDoc comment, `/** @strict */`.',
+        '',
+        'Found 1 @strict marker that marks nothing.',
+        '',
+      ].join('\n'),
+    );
+    expect(r.status).toBe(2);
+  });
 });

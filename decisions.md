@@ -15,6 +15,33 @@ Newest first. Everything outside this file states present truth and merely *poin
 
 ## Decisions
 
+- **2026-10-08** — **A marker that marks nothing is an error, exit 2** (`strayMarkers`,
+  `src/regions.ts`; `spec.md` §Marking).
+  - **Why:** `// @strict`, `/* @strict */`, a JSDoc `@strict` attached to nothing, and
+    `@strictFile` below an import all looked like marks and checked nothing. To the person
+    who wrote them, the silence read as *their code passed*. Each is now reported with
+    the fix in its message. Exit 2 (bad input) rather than 1, so CI cannot go green on a
+    mark that does nothing.
+  - **Rejected:** a warning that leaves the exit code alone, which is the same silence
+    with extra output. Also rejected: honouring `// @strict` as a mark. A line comment
+    has no attachment in the AST, so what it covers would be a guess.
+  - **Guard:** `test/marking.test.ts`'s stray rows, which pin each message's fix: a
+    mutation that sent plain comments down the wrong branch kept them strays and reddened
+    only once the messages were pinned. Plus `test/cli.test.ts`'s exit-2 row.
+
+- **2026-10-08** — **Anything TypeScript attaches JSDoc to can be marked, statements
+  included** (`spec.md` §Marking; names in `src/report.ts`).
+  - **Why:** found by probing, not designed: the engine already honoured `@strict` on
+    `if` blocks, loops, `return`, expression statements and inline arrows, because
+    TypeScript attaches JSDoc to them. Kept and documented, because marking one block of
+    a 500-line legacy function is the gradual step this tool exists for. In the report,
+    such marks are named by kind and enclosing code (`if in render`).
+  - **Rejected:** restricting marks to declarations and treating the rest as strays.
+    That throws away the finest-grained step for a tidier list.
+  - **Consequence, pinned by a spec example:** a mark inside a legacy function trusts that
+    function's locals, so they appear as report edges.
+  - **Guard:** `test/marking.test.ts`, one row per construct, including its report name.
+
 - **2026-10-08** — **`--report` shows the boundary; inbound checking (`--boundary`) is
   declined** (`src/report.ts`; `spec.md` §The report).
   - **Why:** errors keep trusting signatures. Reading unmarked signatures pessimistically
