@@ -19,14 +19,14 @@ trusts them; calls into marked code from unmarked code are not checked (`spec.md
 
 ## Environment / build / test / run
 
-Node 26, npm, ESM. `typescript` 6.x is a dev dependency and a peer (`>=5.0 <7`): the tool
+Node ≥22.18, npm, ESM, **no build step**: the bin is `src/cli.ts`, run by Node's type
+stripping (`decisions.md` 2026-10-08), which is why `erasableSyntaxOnly` is on. `typescript` 6.x is a dev dependency and a peer (`>=5.0 <7`): the tool
 uses the project's compiler. Why not TypeScript 7: `decisions.md` 2026-10-08.
 
 ```sh
 make check                              # biome + tsc + tests; ends in the baseline line
 npx vitest run test/properties.test.ts  # the properties; PROPERTY_RUNS=2000 for depth
 node src/cli.ts -p test/fixtures/legacy/tsconfig.json   # runs from source, no build
-make build                              # emit dist/ for the bin
 ```
 
 `src/ts.ts` is the only module that *constructs* compiler objects (config, host, program),

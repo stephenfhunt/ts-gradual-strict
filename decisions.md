@@ -15,6 +15,24 @@ Newest first. Everything outside this file states present truth and merely *poin
 
 ## Decisions
 
+- **2026-10-08** — **No build step: the bin is `src/cli.ts`, run by Node's type
+  stripping; `engines` is `>=22.18`** (`package.json`; `test/consume.test.ts`).
+  - **Why:** the tool is meant to be consumed from a monorepo as a `file:` or workspace
+    dependency, not from npm. Node 22.18 and 23.6+ strip types by default. The source was
+    already erasable-only with `.ts` specifiers, so a build added only a way to ship a stale
+    `dist/`, and `bin` did point at a git-ignored `dist/cli.js` that a fresh clone would
+    lack. The old `>=26` was copied from tsdl's `package.json` and never checked against
+    this code.
+  - **Floor, measured with `npx -p node@<v>`:** 22.18.0 runs the CLI and passes all 62
+    tests, the consumer test included. 22.17.0 fails with `ERR_UNKNOWN_FILE_EXTENSION`.
+  - **Constraint accepted:** Node refuses to strip types under `node_modules`, so the
+    package must be linked, not copied (npm, pnpm and Yarn workspaces link). `npm pack`
+    and Yarn Plug'n'Play are out.
+  - **Rejected:** keeping `tsconfig.build.json` for a published `dist/`. Nothing publishes,
+    and a build nobody runs is how `bin` came to point at a missing file.
+  - **Guard:** `test/consume.test.ts` installs via `file:` and runs the bin through its
+    shebang. It reddens when `bin` points at `dist/` (mutation-verified).
+
 - **2026-10-08** — **A marker that marks nothing is an error, exit 2** (`strayMarkers`,
   `src/regions.ts`; `spec.md` §Marking).
   - **Why:** `// @strict`, `/* @strict */`, a JSDoc `@strict` attached to nothing, and

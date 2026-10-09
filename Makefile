@@ -9,16 +9,13 @@
 # not yet written. `grep -c` prints 0 *and* exits 1 on no match, so pipe through head and
 # let $(or) cover a missing file rather than `|| echo 0`, which double-counts.
 
-.PHONY: check build
+.PHONY: check
 check: ## the session baseline — its last line pastes into the worklog
 	@npx biome check .
 	@npx tsc -p tsconfig.json
 	@npx vitest run; status=$$?; \
 	  echo "baseline: properties=$(PROPS_DONE)/$(PROPS) green tests=$$(node tools/test-counts)"; \
 	  exit $$status
-
-build:
-	@npx tsc -p tsconfig.build.json
 
 PROPS      := $(or $(shell grep -cE '^- \[[ x]\] \*\*P' testing.md 2>/dev/null | head -1),0)
 PROPS_DONE := $(or $(shell grep -cE '^- \[x\] \*\*P' testing.md 2>/dev/null | head -1),0)

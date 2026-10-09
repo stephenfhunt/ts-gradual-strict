@@ -51,7 +51,16 @@ tool deliberately does not catch.
 
 ## Requirements
 
-Node 26+, and TypeScript 5.x or 6.x in the project. TypeScript 7's compiler API is not yet
+Node 22.18+, and TypeScript 5.x or 6.x in the project. There is no build step: the command
+runs its TypeScript source directly under Node's type stripping, so it can be used straight
+from a checkout as a `file:` or workspace dependency:
+
+```json
+"devDependencies": { "ts-gradual-strict": "file:../tools/ts-gradual-strict" }
+```
+
+Node will not strip types under `node_modules`, so the package must be linked (npm, pnpm and
+Yarn workspaces all link), not copied: `npm pack` tarballs and Yarn Plug'n'Play will not work. TypeScript 7's compiler API is not yet
 stable; see `decisions.md`.
 
 ## Development

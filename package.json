@@ -6,16 +6,15 @@
   "private": true,
   "license": "ISC",
   "bin": {
-    "ts-gradual-strict": "./dist/cli.js"
+    "ts-gradual-strict": "./src/cli.ts"
   },
   "files": [
-    "dist"
+    "src"
   ],
   "engines": {
-    "node": ">=26"
+    "node": ">=22.18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
