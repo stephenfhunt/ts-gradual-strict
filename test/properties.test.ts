@@ -9,7 +9,10 @@ import type ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { checkProgram } from '../src/check.ts';
 import type { Span } from '../src/regions.ts';
+import { buildReport, type Report } from '../src/report.ts';
 import {
+  callGraph,
+  classOf,
   type Fn,
   markedShape,
   marking,
@@ -240,6 +243,121 @@ describe('properties', () => {
         { numRuns: 500 },
       );
       expect(result.failed).toBe(true);
+    });
+  });
+  describe('the report', () => {
+    function reportFor(s: Shape, marks: readonly boolean[]) {
+      const r = render(s, marks);
+      return { r, report: buildReport(strictProgram({ 'gen.ts': r.text })) };
+    }
+
+    /** The outermost marked slot covering each slot — its mark — or undefined. */
+    function unitOf(
+      s: Shape,
+      marks: readonly boolean[],
+    ): readonly (number | undefined)[] {
+      const cls = classOf(s);
+      return marks.map((m, i) => {
+        const k = cls[i];
+        if (k !== undefined && marks[k] === true) return k;
+        return m ? i : undefined;
+      });
+    }
+
+    /** The slot whose span holds a position: innermost, since methods follow their class. */
+    function slotAt(r: Rendered, pos: number): number {
+      return r.spans.findLastIndex((sp) => within([sp], pos));
+    }
+
+    /** The tool's edges as `mark->target` slot pairs. */
+    function toolEdges(s: Shape, marks: readonly boolean[], r: Rendered, report: Report) {
+      const units = unitOf(s, marks);
+      return report.edges
+        .map((e) => {
+          const u = r.spans.findIndex(
+            (sp, j) => units[j] === j && within([sp], e.site.pos),
+          );
+          return `${u}->${slotAt(r, e.target.at.pos)}`;
+        })
+        .sort();
+    }
+
+    test('P10 — with every declaration marked, there are no edges and every mark is closed', () => {
+      let partialEdges = 0;
+      fc.assert(
+        fc.property(markedShape(), ({ shape: s, marks }) => {
+          const { report } = reportFor(s, Array(slotCount(s)).fill(true));
+          expect(report.edges).toEqual([]);
+          expect(report.closed).toBe(report.marks);
+          if (reportFor(s, marks).report.edges.length > 0) partialEdges++;
+        }),
+        { numRuns: RUNS },
+      );
+      expect(partialEdges).toBeGreaterThan(RUNS * 0.3);
+    });
+
+    test("P11 — an edge's strict-error count is what marking its target adds", () => {
+      let costly = 0;
+      fc.assert(
+        fc.property(markedShape(), fc.nat(), ({ shape: s, marks }, n) => {
+          const { r, report } = reportFor(s, marks);
+          const e = report.edges[n % Math.max(report.edges.length, 1)];
+          if (e === undefined) return;
+          const t = slotAt(r, e.target.at.pos);
+          const after = marks.map((m, i) => m || i === t);
+          if (e.target.strictErrors > 0) costly++;
+          const grew = reported(render(s, after)).length - reported(r).length;
+          expect(grew).toBe(e.target.strictErrors);
+        }),
+        { numRuns: RUNS },
+      );
+      expect(costly).toBeGreaterThan(RUNS * 0.1);
+    });
+
+    test("P12 — edges and closed marks follow the generator's own call graph", () => {
+      let someClosed = 0;
+      let someOpen = 0;
+      fc.assert(
+        fc.property(markedShape(), ({ shape: s, marks }) => {
+          const units = unitOf(s, marks);
+          const classSlots = new Set(classOf(s).filter((k) => k !== undefined));
+          const graph = callGraph(s);
+          const edges = new Set<string>();
+          const refs = new Map<number, Set<number>>();
+          graph.forEach((targets, i) => {
+            const u = units[i];
+            if (u === undefined) return;
+            if (!refs.has(u)) refs.set(u, new Set());
+            for (const t of targets) {
+              const tu = units[t];
+              if (tu === undefined) {
+                if (!classSlots.has(t)) edges.add(`${u}->${t}`);
+              } else if (tu !== u) {
+                refs.get(u)?.add(tu);
+              }
+            }
+          });
+          const open = new Set([...edges].map((e) => Number(e.split('->')[0])));
+          for (let changed = true; changed; ) {
+            changed = false;
+            for (const [u, rs] of refs) {
+              if (!open.has(u) && [...rs].some((v) => open.has(v))) {
+                open.add(u);
+                changed = true;
+              }
+            }
+          }
+          const { r, report } = reportFor(s, marks);
+          expect(toolEdges(s, marks, r, report)).toEqual([...edges].sort());
+          expect(report.marks).toBe(refs.size);
+          expect(report.closed).toBe(refs.size - open.size);
+          if (report.closed > 0 && open.size > 0) someClosed++;
+          if (open.size > report.closed) someOpen++;
+        }),
+        { numRuns: RUNS },
+      );
+      expect(someClosed).toBeGreaterThan(RUNS * 0.1);
+      expect(someOpen).toBeGreaterThan(RUNS * 0.1);
     });
   });
 });

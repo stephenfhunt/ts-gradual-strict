@@ -53,7 +53,7 @@ here, at which point the flag can be turned on and the marks deleted.
 ## The command
 
 ```sh
-ts-gradual-strict [-p <tsconfig.json>] [--pretty | --no-pretty]
+ts-gradual-strict [-p <tsconfig.json>] [--pretty | --no-pretty] [--report]
 ```
 
 `-p` defaults to `tsconfig.json` in the working directory and is read the way `tsc -p`
@@ -66,16 +66,48 @@ and source context, as `tsc` does.
 | a marked region has errors | the diagnostics, then `Found N errors in @strict code.` | 1 |
 | the tsconfig cannot be read, or bad arguments | the config diagnostics, or usage | 2 |
 
+`--report` appends the boundary report (§The report) after everything else, and never
+changes the exit code.
+
 Deprecated compiler options in the project's tsconfig are not errors here: the second
 program sets `ignoreDeprecations`, since a project that builds with its own compiler must
 not fail this check for being on an older one.
+
+## The report
+
+Marked code trusts the declared types of the unmarked code it uses (§Semantics). The
+report makes that trust visible, without changing what is reported as an error.
+
+An **edge** runs from a mark to an unmarked declaration that the mark references, when
+that declaration has code that could break its own type: a function, method, accessor,
+class property or variable, in the project's own source. Library and `node_modules`
+declarations, `declare`d ones, classes, interfaces, type aliases and parameters are not
+edges. There is one edge per mark and target, located at the mark's first reference.
+
+Each edge shows:
+
+- **`annotated` or `inferred`**: whether the target declares its type. An inferred
+  target is re-inferred under strict rules, so editing its body can change what marked
+  code sees.
+- **Its strict errors**: the strict program's diagnostics in the target's own text,
+  which is exactly what marking the target would add to the output. `clean` means
+  marking it is free. Writes to a variable from elsewhere are not in its own text and
+  are not counted.
+- **Where the target is declared.**
+
+Edges are listed cheapest first: by strict errors, then by position.
+
+A mark is **closed** when it has no edges and every mark it references is closed. Inside
+a closed mark strict mode holds outright: nothing it reaches is trusted. The last line
+counts marks and closed marks. A marked class is one mark, as is a file marked with
+`@strictFile`.
 
 ## Not covered
 
 - Strict-family flags other than `strictNullChecks` (`noImplicitAny`,
   `strictPropertyInitialization`, `strictFunctionTypes`, …).
 - Calls *into* marked code from unmarked code: no warning when legacy code passes `null`
-  to a marked parameter.
+  to a marked parameter (`decisions.md` 2026-10-08).
 - An opt-out inside a mark.
 - Editor integration: the diagnostics appear only from the command.
 - TypeScript 7, whose compiler API is not yet stable.
@@ -84,7 +116,7 @@ not fail this check for being on an older one.
 
 Each example is one file, `example.ts`, in a project compiled with `strict: false` and
 `target: es2022`. The output is what the command prints with `--no-pretty`, without its
-summary line. A test runs every block below verbatim and compares exactly.
+summary line. An example with a `Flags: --report` line runs with the report. A test runs every block below verbatim and compares exactly.
 
 ### A marked function cannot return null through a non-null signature
 
@@ -276,3 +308,126 @@ example.ts(7,10): error TS2531: Object is possibly 'null'.
 ```
 
 Test: `examples › an unannotated legacy function is re-inferred under strict rules`
+
+### The report lists trusted declarations, cheapest to mark first
+
+Flags: --report
+
+```ts
+function nickname(id: number): string {
+  return id === 0 ? null : 'ace';
+}
+
+function pick(flag: boolean) {
+  return flag ? 'yes' : null;
+}
+
+/** @strict */
+function badge(id: number): number {
+  return nickname(id).length + pick(true).length;
+}
+```
+
+```text
+example.ts(11,32): error TS2531: Object is possibly 'null'.
+
+@strict boundary: 2 edges from 1 mark
+  example.ts(11,32): badge → pick      inferred   clean           example.ts(5,10)
+  example.ts(11,10): badge → nickname  annotated  1 strict error  example.ts(1,10)
+marks: 1, closed: 0
+```
+
+Test: `examples › the report lists trusted declarations, cheapest to mark first`
+
+### A mark is closed when everything it reaches is marked
+
+Flags: --report
+
+```ts
+/** @strict */
+function nickname(id: number): string | null {
+  return id === 0 ? null : 'ace';
+}
+
+/** @strict */
+function badge(id: number): number {
+  return nickname(id)?.length ?? 0;
+}
+
+/** @strict */
+function label(id: number): string {
+  return `${legacyName(id)}#${badge(id)}`;
+}
+
+function legacyName(id: number): string {
+  return String(id);
+}
+```
+
+```text
+@strict boundary: 1 edge from 1 mark
+  example.ts(13,13): label → legacyName  annotated  clean  example.ts(16,10)
+marks: 3, closed: 2
+```
+
+Test: `examples › a mark is closed when everything it reaches is marked`
+
+### Methods and variables are edges; types and declarations are not
+
+Flags: --report
+
+```ts
+interface User {
+  name: string;
+  nick?: string;
+}
+declare const current: User;
+
+class Legacy {
+  label(): string {
+    return null;
+  }
+}
+const fallback = 'n/a';
+
+/** @strict */
+function describe(l: Legacy): string {
+  return (current.nick ?? l.label() ?? fallback).toUpperCase();
+}
+```
+
+```text
+@strict boundary: 2 edges from 1 mark
+  example.ts(16,40): describe → fallback      inferred   clean           example.ts(12,7)
+  example.ts(16,29): describe → Legacy.label  annotated  1 strict error  example.ts(8,3)
+marks: 1, closed: 0
+```
+
+Test: `examples › methods and variables are edges; types and declarations are not`
+
+### A target's strict errors leave out what its nested marks already report
+
+Flags: --report
+
+```ts
+function legacy(): string {
+  /** @strict */
+  const size = (s: string | null): number => s.length;
+  return null;
+}
+
+/** @strict */
+function caller(): number {
+  return legacy().length;
+}
+```
+
+```text
+example.ts(3,46): error TS18047: 's' is possibly 'null'.
+
+@strict boundary: 1 edge from 1 mark
+  example.ts(9,10): caller → legacy  annotated  1 strict error  example.ts(1,10)
+marks: 2, closed: 1
+```
+
+Test: `examples › a target's strict errors leave out what its nested marks already report`

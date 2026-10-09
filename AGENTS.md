@@ -43,6 +43,7 @@ tie-break is *which event updates it*.
 | `spec.md` | current-state | marking, semantics, the command; worked examples, each run by a test |
 | `testing.md` | current-state | test strategy, oracles, the generator, the property catalog |
 | `decisions.md` | **append-only** | decisions, rationale, open questions |
+| `notes/` | draft | the long form behind one open question; retired when it is decided |
 | `docs/worklog.md` | **append-only** | session handoff, newest first |
 
 **current-state** documents get rewritten to state present truth and never narrate the

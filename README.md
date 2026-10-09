@@ -36,6 +36,11 @@ through its own `: string`. Unmarked code is never reported.
   everything nested inside it.
 - `// @strictFile` before a file's first token marks the whole file.
 
+`--report` adds a list of the places where marked code trusts unmarked code. For each
+one it shows how many strict errors marking that declaration would add, cheapest first,
+and it counts the marks where strict mode holds outright because nothing they reach is
+trusted.
+
 When everything is marked and the tool is silent, turn `strictNullChecks` on in tsconfig
 and delete the marks: the output with everything marked is exactly what `tsc` reports.
 

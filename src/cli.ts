@@ -2,13 +2,16 @@
 /**
  * `ts-gradual-strict -p tsconfig.json` — silent and exit 0 when every marked region is
  * clean under strict rules; tsc-style diagnostics and exit 1 when one is not; exit 2 when
- * the project or the arguments could not be read (`spec.md` §The command).
+ * the project or the arguments could not be read (`spec.md` §The command). `--report`
+ * appends the boundary report and never changes the exit code (`spec.md` §The report).
  */
 import { parseArgs } from 'node:util';
 import ts from 'typescript';
 import { checkProject } from './check.ts';
+import { formatReport } from './report.ts';
 
-const USAGE = 'usage: ts-gradual-strict [-p <tsconfig.json>] [--pretty | --no-pretty]\n';
+const USAGE =
+  'usage: ts-gradual-strict [-p <tsconfig.json>] [--pretty | --no-pretty] [--report]\n';
 
 const formatHost: ts.FormatDiagnosticsHost = {
   getCanonicalFileName: (f) => f,
@@ -24,13 +27,18 @@ function print(diagnostics: readonly ts.Diagnostic[], pretty: boolean): void {
 }
 
 function main(argv: readonly string[]): number {
-  let values: { project?: string | undefined; pretty?: boolean | undefined };
+  let values: {
+    project?: string | undefined;
+    pretty?: boolean | undefined;
+    report?: boolean | undefined;
+  };
   try {
     ({ values } = parseArgs({
       args: [...argv],
       options: {
         project: { type: 'string', short: 'p' },
         pretty: { type: 'boolean' },
+        report: { type: 'boolean' },
       },
       allowNegative: true,
     }));
@@ -40,16 +48,21 @@ function main(argv: readonly string[]): number {
   }
   const project = values.project ?? 'tsconfig.json';
   const pretty = values.pretty ?? process.stdout.isTTY === true;
-  const result = checkProject(project);
+  const result = checkProject(project, { report: values.report === true });
   if (result.configErrors.length > 0) {
     print(result.configErrors, pretty);
     return 2;
   }
-  if (result.diagnostics.length === 0) return 0;
-  print(result.diagnostics, pretty);
   const n = result.diagnostics.length;
-  process.stdout.write(`\nFound ${n} error${n === 1 ? '' : 's'} in @strict code.\n`);
-  return 1;
+  if (n > 0) {
+    print(result.diagnostics, pretty);
+    process.stdout.write(`\nFound ${n} error${n === 1 ? '' : 's'} in @strict code.\n`);
+  }
+  if (result.report !== undefined) {
+    if (n > 0) process.stdout.write('\n');
+    process.stdout.write(formatReport(result.report, process.cwd()));
+  }
+  return n > 0 ? 1 : 0;
 }
 
 process.exitCode = main(process.argv.slice(2));

@@ -38,9 +38,12 @@ export interface Rendered {
   readonly spans: readonly Span[];
 }
 
-/** Shared declarations every program can read: an optional and a nullable property. */
+/**
+ * Shared declarations every program can read: an optional and a nullable property.
+ * `declare`d, so `box` has no code behind it and is never a report edge.
+ */
 const PRELUDE =
-  'interface Box { v?: string; w: string | null; }\nconst box: Box = { w: null };\n';
+  'interface Box { v?: string; w: string | null; }\ndeclare const box: Box;\n';
 
 export function slotCount(shape: Shape): number {
   return (
@@ -234,4 +237,53 @@ export function rebodied(s: Shape): fc.Arbitrary<Shape> {
     fns: fc.tuple(...s.fns.map(fresh)),
     consts: fc.constant(s.consts),
   });
+}
+
+/**
+ * What each slot's own text references, by slot index — the generator's bookkeeping,
+ * read off the shape rather than asked of the tool, for P12. A class slot's own text is
+ * its header; its methods are their own slots. `new Ck()` references class slot k.
+ */
+export function callGraph(s: Shape): readonly (readonly number[])[] {
+  const classSlot: number[] = [];
+  const methodSlot: number[][] = [];
+  let slot = 0;
+  for (const methods of s.classes) {
+    classSlot.push(slot++);
+    methodSlot.push(methods.map(() => slot++));
+  }
+  const fnSlot = s.fns.map(() => slot++);
+  const refsOf = (text: string): number[] => {
+    const out: number[] = [];
+    for (const m of text.matchAll(/\bf(\d+)\(/g)) out.push(fnSlot[Number(m[1])] ?? -1);
+    for (const m of text.matchAll(/new C(\d+)\(\)\.m(\d+)\(/g)) {
+      out.push(classSlot[Number(m[1])] ?? -1);
+      out.push(methodSlot[Number(m[1])]?.[Number(m[2])] ?? -1);
+    }
+    return out;
+  };
+  const graph: number[][] = [];
+  s.classes.forEach((methods) => {
+    graph.push([]);
+    for (const m of methods) graph.push(refsOf(m.body.join('\n')));
+  });
+  for (const f of s.fns) graph.push(refsOf(f.body.join('\n')));
+  for (const c of s.consts) graph.push(refsOf(c));
+  return graph;
+}
+
+/** For each slot, the class slot that contains it, if it is a method. */
+export function classOf(s: Shape): readonly (number | undefined)[] {
+  const out: (number | undefined)[] = [];
+  let slot = 0;
+  for (const methods of s.classes) {
+    const k = slot++;
+    out.push(undefined);
+    for (const _ of methods) {
+      out.push(k);
+      slot++;
+    }
+  }
+  for (; slot < slotCount(s); slot++) out.push(undefined);
+  return out;
 }

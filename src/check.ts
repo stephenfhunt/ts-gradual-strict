@@ -4,6 +4,7 @@
  */
 import type ts from 'typescript';
 import { inRegions, mayHaveRegions, strictRegions } from './regions.ts';
+import { buildReport, type Report } from './report.ts';
 import { createStrictProgram, loadProject } from './ts.ts';
 
 export interface CheckResult {
@@ -11,6 +12,12 @@ export interface CheckResult {
   readonly diagnostics: readonly ts.Diagnostic[];
   /** Config-file errors. Non-empty means nothing was checked. */
   readonly configErrors: readonly ts.Diagnostic[];
+  /** The boundary report, when asked for. */
+  readonly report?: Report;
+}
+
+export interface CheckOptions {
+  readonly report?: boolean;
 }
 
 /**
@@ -33,11 +40,17 @@ export function checkProgram(program: ts.Program): readonly ts.Diagnostic[] {
 }
 
 /** Check the project a tsconfig describes. */
-export function checkProject(tsconfigPath: string): CheckResult {
+export function checkProject(
+  tsconfigPath: string,
+  options: CheckOptions = {},
+): CheckResult {
   const project = loadProject(tsconfigPath);
   if (project.errors.length > 0) {
     return { diagnostics: [], configErrors: project.errors };
   }
   const program = createStrictProgram(project.rootNames, project.options);
-  return { diagnostics: checkProgram(program), configErrors: [] };
+  const diagnostics = checkProgram(program);
+  return options.report === true
+    ? { diagnostics, configErrors: [], report: buildReport(program) }
+    : { diagnostics, configErrors: [] };
 }

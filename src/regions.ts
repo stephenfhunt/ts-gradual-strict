@@ -35,23 +35,37 @@ function hasStrictTag(node: ts.Node): boolean {
 }
 
 /**
- * The marked spans of a file, outermost only: once a node is marked its descendants are
- * covered and are not visited. A span runs from the node's full start, which includes the
- * JSDoc that marks it, to its end.
+ * One mark: the marked node (the file itself, for `@strictFile`) and the span it covers.
+ * A span runs from the node's full start, which includes the JSDoc that marks it, to its
+ * end.
  */
-export function strictRegions(sf: ts.SourceFile): readonly Span[] {
+export interface Mark {
+  readonly node: ts.Node;
+  readonly span: Span;
+}
+
+/**
+ * The marks of a file, outermost only: once a node is marked its descendants are covered
+ * and are not visited, so a marked class is one mark however many members it has.
+ */
+export function strictMarks(sf: ts.SourceFile): readonly Mark[] {
   if (!mayHaveRegions(sf)) return [];
-  if (isStrictFile(sf)) return [{ start: 0, end: sf.end }];
-  const spans: Span[] = [];
+  if (isStrictFile(sf)) return [{ node: sf, span: { start: 0, end: sf.end } }];
+  const marks: Mark[] = [];
   const visit = (node: ts.Node): void => {
     if (hasStrictTag(node)) {
-      spans.push({ start: node.pos, end: node.end });
+      marks.push({ node, span: { start: node.pos, end: node.end } });
       return;
     }
     ts.forEachChild(node, visit);
   };
   ts.forEachChild(sf, visit);
-  return spans;
+  return marks;
+}
+
+/** The spans of a file's marks. */
+export function strictRegions(sf: ts.SourceFile): readonly Span[] {
+  return strictMarks(sf).map((m) => m.span);
 }
 
 export function inRegions(regions: readonly Span[], position: number): boolean {

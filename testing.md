@@ -54,7 +54,9 @@ mutation removing the strict override passed P1, since both sides lost the flag 
 
 **An independent oracle** re-derives the rule rather than calling the implementation.
 P5's region oracle is the generator's own bookkeeping: `render` records each slot's span as
-it writes it, and P5 never asks `src/regions.ts` where a mark reaches.
+it writes it, and P5 never asks `src/regions.ts` where a mark reaches. P12's is the same
+kind: `callGraph` reads each slot's calls off the shape, and P12 never asks the checker
+what a name resolves to.
 
 ## The generator
 
@@ -62,8 +64,9 @@ it writes it, and P5 never asks `src/regions.ts` where a mark reaches.
 annotations from `string`, `string | null`, `string | undefined` or none; parameters
 `string`, `string | null`, `string | undefined`, optional; classes with methods, functions
 and top-level consts; bodies that dereference (`.slice`, `.length`), coalesce, narrow on
-`p`, and call any function or method in the program. A shared `Box` gives every program an
-optional and a nullable property to read.
+`p`, and call any function or method in the program. A shared, `declare`d `box: Box` gives
+every program an optional and a nullable property to read, with no code behind it, so it is
+never a report edge.
 
 Every declaration has a **slot**, filled with `/** @strict */` or `/** @loose  */` — the
 same width, so a diagnostic has the same offset under every marking and properties compare
@@ -92,6 +95,16 @@ markings by position. P6 guards that invariant.
   named by slot and offset. *Acceptance:* without annotations fast-check must find a
   counterexample — the re-inference gap of `spec.md` §Semantics, found by search. Reddened
   by: letting the swap reach covered bodies.
+- [x] **P10 — with full marking the report is empty**: no edges, and every mark is
+  closed. Reddened by: treating declarations covered by another mark as edges.
+- [x] **P11 — an edge's cost is exact.** Marking an edge's target grows the output by
+  exactly the target's reported strict-error count. Reddened by: counting at most one
+  error per target. Excluding errors that a nested mark already reports is out of the
+  generator's reach, because it never nests a mark inside an unmarked function. That case
+  is pinned by a spec example instead, which reddens under the same mutation.
+- [x] **P12 — edges and closure follow the call graph.** The oracle is the generator's
+  own `callGraph`, read off the shape rather than asked of the checker. Reddened by: not
+  propagating openness between marks; treating covered targets as edges.
 - [ ] **P8 — an independent nullability oracle.** A model of the lattice written from
   `spec.md`, predicting which returns, assignments and dereferences error, over a fragment
   of the generator. The only property that does not trust `tsc` to be right.

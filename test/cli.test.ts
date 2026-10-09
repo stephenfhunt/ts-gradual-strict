@@ -54,4 +54,27 @@ describe('the command', () => {
     expect(r.stderr).toContain('usage: ts-gradual-strict');
     expect(r.status).toBe(2);
   });
+  test('--report follows imports and leaves the exit code alone', () => {
+    const r = run('-p', 'test/fixtures/legacy/tsconfig.json', '--no-pretty', '--report');
+    expect(r.stdout).toBe(
+      [
+        "test/fixtures/legacy/src/greet.ts(5,21): error TS2531: Object is possibly 'null'.",
+        "test/fixtures/legacy/src/greet.ts(5,21): error TS2532: Object is possibly 'undefined'.",
+        '',
+        'Found 2 errors in @strict code.',
+        '',
+        '@strict boundary: 1 edge from 1 mark',
+        '  test/fixtures/legacy/src/greet.ts(5,21): greet → findUser  annotated  clean  test/fixtures/legacy/src/users.ts(6,17)',
+        'marks: 1, closed: 0',
+        '',
+      ].join('\n'),
+    );
+    expect(r.status).toBe(1);
+  });
+
+  test('--report on a clean project prints the report and exits 0', () => {
+    const r = run('-p', 'test/fixtures/clean/tsconfig.json', '--no-pretty', '--report');
+    expect(r.stdout).toContain('@strict boundary: 1 edge from 1 mark');
+    expect(r.status).toBe(0);
+  });
 });

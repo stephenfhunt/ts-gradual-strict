@@ -15,6 +15,23 @@ Newest first. Everything outside this file states present truth and merely *poin
 
 ## Decisions
 
+- **2026-10-08** — **`--report` shows the boundary; inbound checking (`--boundary`) is
+  declined** (`src/report.ts`; `spec.md` §The report).
+  - **Why:** errors keep trusting signatures. Reading unmarked signatures pessimistically
+    would make marking a callee delete its callers' errors, which breaks P3 and P4. The
+    report makes that trust visible instead. Each edge carries the target's own strict
+    errors, which the strict program already computed and the filter discarded. By P4
+    and P5 that number is exactly what marking the target would add (P11), so sorted
+    cheapest first the report is a migration to-do list. Closure tells you where strict
+    mode actually holds.
+  - **Rejected:** `--boundary`. Your call: it does not add enough value. It sees only
+    nullability that is visible in types — a `null` in a legacy variable declared
+    `string` passes into marked code unseen — and it would break P2 by design. Also
+    rejected: a separate `report` subcommand. A flag composes with a CI run that already
+    checks.
+  - **Guard:** P10–P12; the spec example on nested marks (the one rule the generator
+    cannot reach); `test/cli.test.ts` for imports and the unchanged exit code.
+
 - **2026-10-08** — **Day one adopts the documents, not the audit** (process; `AGENTS.md`).
   - **Why:** `../working-discipline`'s own measurement was that the value is in the
     nouns — a document map, an append-only log, a worklog, one baseline line — and its
@@ -89,6 +106,24 @@ Newest first. Everything outside this file states present truth and merely *poin
 
 ## Open questions
 
+- **How should the boundary between marked and unmarked code be reported?** Errors stay
+  as they are: trusted signatures, no inbound checks. Changing that breaks P3/P4 or the
+  endgame (`notes/boundary.md` §The problem). The proposal adds output only, with worked
+  examples in `notes/boundary.md`. Three parts, each decidable separately:
+  1. **`--report`**: outbound edges from marked to unmarked code, each with
+     annotated/inferred, the target's own strict-error count (= the cost of marking it
+     next, P11), and a `closed` count of marks. Recommend: yes, as a flag that never
+     changes the exit code. Alternative: a separate `report` subcommand.
+  2. **`--boundary`**: also report errors in unmarked code whose target (argument → marked
+     parameter, assignment → marked property) is marked. Recommend: yes, as errors with
+     exit 1, because the user opted in. Alternative: warnings that leave the exit code
+     alone. Callbacks are deferred.
+  3. **Which comes first?** Recommend `--report`. It changes no semantics, and its
+     strict-error count is information the tool already computes and discards.
+  — `src/check.ts`; `spec.md` §Not covered.
+  - ***Resolved 2026-10-08*** — `--report` is built as proposed. `--boundary` is declined.
+    See the decision of that date. The long-form note was retired with it.
+
 - **Should the tool say when marked code leans on an unannotated legacy function?**
   P7 shows annotations are a firewall: behind them, rewriting unmarked bodies never
   changes marked output; without them, a legacy body edit can add or remove errors in
@@ -96,12 +131,18 @@ Newest first. Everything outside this file states present truth and merely *poin
   called from @strict code" — would turn that into a to-do list for the migration.
   Against: it is output that is not a strict-mode error, which the command currently
   never prints. Decide once a real project shows how often it happens. — `src/check.ts`.
+  - ***Amended 2026-10-08 — folded into the boundary question above.*** The hint became
+    the `inferred` kind of an outbound edge, in a report that never changes the exit code
+    — which answers the objection that it is not a strict-mode error.
 
 - **Should calls *into* marked code be reported?** Legacy code passing `null` to a marked
   `(name: string)` is dropped today (spec example). A `--boundary` mode could report
   those sites as warnings, giving marked functions a guarded perimeter. Against: it
   reports in unmarked code, which breaks P2 by design and needs its own property. —
   `spec.md` §Not covered.
+  - ***Amended 2026-10-08 — folded into the boundary question above*** as its part 2,
+    with the property it needs (P13) and a worked example showing what it cannot see: a
+    `null` held in a variable declared `string`.
 
 - **When does TypeScript 7 get an adapter?** When its API leaves `unstable/`, or when a
   real project needs to run this under 7 — whichever first. The question for that session
